@@ -75,71 +75,89 @@ def _random_lane():
 
 
 # ── ScrollingBackground ───────────────────────────────────────────────────────
+# ЗАЧЕМ: создаёт иллюзию движущейся дороги.
+# Используются ДВЕ копии картинки фона — одна за другой.
+# Когда первая уходит вниз за экран — она прыгает наверх.
+# Так получается бесконечный скролл без "дырок".
 class ScrollingBackground:
     def __init__(self, image):
         self.img = image
-        self.y1, self.y2 = 0, -SH
+        self.y1, self.y2 = 0, -SH  # y2 начинается выше экрана (над y1)
 
     def update(self, speed):
+        # Каждый кадр обе копии двигаются вниз на speed пикселей
         self.y1 += speed
         self.y2 += speed
+        # Если копия ушла за нижний край — перебрасываем её наверх
         if self.y1 >= SH: self.y1 = -SH
         if self.y2 >= SH: self.y2 = -SH
 
     def draw(self, surf):
+        # Рисуем обе копии — одна видна, вторая "заходит" сверху
         surf.blit(self.img, (0, self.y1))
         surf.blit(self.img, (0, self.y2))
 
 
 # ── Player ────────────────────────────────────────────────────────────────────
+# ЗАЧЕМ: класс игрока. Хранит картинку, позицию и состояния (щит, замедление).
+# Наследуется от pygame.sprite.Sprite — это даёт встроенные методы коллизий.
 class Player(pygame.sprite.Sprite):
     BASE_SPEED = 5
 
     def __init__(self, img):
         super().__init__()
         self.image      = img
+        # Начальная позиция — по центру экрана, внизу (y=500)
         self.rect       = self.image.get_rect(center=(SW // 2, 500))
-        self.shielded   = False
-        self.slow_timer = 0
+        self.shielded   = False  # активен ли щит
+        self.slow_timer = 0      # сколько мс осталось замедления
 
     def move(self, dt):
         keys = pygame.key.get_pressed()
+        # Если замедлен — скорость падает с 5 до 2
         spd  = max(2, self.BASE_SPEED - (2 if self.slow_timer > 0 else 0))
         if self.slow_timer > 0:
-            self.slow_timer = max(0, self.slow_timer - dt)
+            self.slow_timer = max(0, self.slow_timer - dt)  # уменьшаем таймер каждый кадр
+        # Движение по стрелкам с ограничением по краям дороги
         if keys[K_LEFT]  and self.rect.left   > ROAD_LEFT:    self.rect.x -= spd
         if keys[K_RIGHT] and self.rect.right  < ROAD_RIGHT:   self.rect.x += spd
+        # Вертикальное движение — только в нижней половине экрана
         if keys[K_UP]    and self.rect.top    > SH // 2:      self.rect.y -= spd
         if keys[K_DOWN]  and self.rect.bottom < SH - 10:      self.rect.y += spd
 
-    def apply_slow(self, ms):  self.slow_timer = max(self.slow_timer, ms)
+    def apply_slow(self, ms):  self.slow_timer = max(self.slow_timer, ms)  # берём максимум — не сбрасываем если уже дольше
     def apply_shield(self):    self.shielded = True
     def remove_shield(self):   self.shielded = False
 
 
 # ── Enemy / Traffic ───────────────────────────────────────────────────────────
+# ЗАЧЕМ: вражеские машины, едущие сверху вниз.
+# Случайно выбирают картинку из пула (красная/жёлтая/зелёная машина).
+# _respawn() — перемещает машину обратно наверх когда она уходит за экран.
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, traffic_imgs, player_rect, extra_speed=0):
         super().__init__()
-        # Pick a random car image from the pool
+        # Случайно выбираем одну из картинок (Enemy.png, yellowcar, greencar)
         self.image       = random.choice(traffic_imgs)
-        self.extra_speed = extra_speed
+        self.extra_speed = extra_speed  # дополнительная скорость (растёт с уровнем)
         self.rect        = self.image.get_rect()
         self._respawn(player_rect)
 
     def _respawn(self, player_rect):
+        # Пытаемся 20 раз найти полосу, которая не совпадает с позицией игрока
         for _ in range(20):
             self.rect.centerx = _random_lane()
-            self.rect.bottom  = random.randint(-140, -20)
-            if abs(self.rect.centerx - player_rect.centerx) > 50:
+            self.rect.bottom  = random.randint(-140, -20)  # появляется выше экрана
+            if abs(self.rect.centerx - player_rect.centerx) > 50:  # не прямо на игроке
                 break
 
     def update(self, speed, player_rect):
-        self.rect.y += speed + self.extra_speed
-        if self.rect.top > SH:
+        self.rect.y += speed + self.extra_speed  # двигается вниз каждый кадр
+        if self.rect.top > SH:  # ушла за нижний край — возрождаем наверху
             self._respawn(player_rect)
 
     def boost(self, amt=0.5):
+        # Вызывается когда игрок собирает каждые 5 монет — враги ускоряются
         self.extra_speed += amt
 
 
@@ -319,6 +337,9 @@ def draw_hud(surf, score, coins, distance, active_pu, pu_ms_left,
 
 
 # ── Main game session ─────────────────────────────────────────────────────────
+# ЗАЧЕМ: главная функция одной игровой сессии.
+# Принимает все ресурсы (картинки, звуки, настройки) и запускает игровой цикл.
+# Возвращает (action, score, distance, coins) когда игра заканчивается.
 def run_game(surface, bg_img, traffic_imgs, nitro_img, barrier_img,
              player_img, crash_snd, bg_music,
              player_name: str, settings: dict):
@@ -509,6 +530,7 @@ def run_game(surface, bg_img, traffic_imgs, nitro_img, barrier_img,
         if distance >= RACE_DISTANCE:
             score += 500; running = False
 
+        # Формула очков: каждая монета = 10 очков + каждые 5 метров = 1 очко
         score = coins * 10 + distance // 5
 
         # ── Render ────────────────────────────────────────────────────────────

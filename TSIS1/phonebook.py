@@ -18,7 +18,10 @@ from connect import get_connection
 # =============================================================================
 
 def bootstrap(conn):
-    base = os.path.dirname(os.path.abspath(__file__))  # папка где лежит этот файл
+    # ЗАЧЕМ: автоматически создаёт таблицы и процедуры при первом запуске.
+    # Читает schema.sql (таблицы) и procedures.sql (хранимые процедуры).
+    # IF NOT EXISTS / CREATE OR REPLACE — безопасно, не сломается при повторном запуске.
+    base = os.path.dirname(os.path.abspath(__file__))
     for fname in ("schema.sql", "procedures.sql"):
         path = os.path.join(base, fname)
         if not os.path.exists(path):
@@ -36,11 +39,14 @@ def bootstrap(conn):
 # HELPERS — вспомогательные функции, используются в нескольких местах
 # =============================================================================
 
-# Базовый SQL для выборки контактов со всеми связанными данными.
-# LEFT JOIN groups — подтягивает название группы (NULL если группы нет).
-# LEFT JOIN phones — подтягивает все номера контакта.
-# STRING_AGG — склеивает несколько номеров в одну строку: "+7... (mobile), +7... (work)"
-# {where} и {order} — плейсхолдеры, подставляются в query_contacts()
+# ЗАЧЕМ этот SQL:
+# Мы собираем данные из ТРЁХ таблиц в одну строку:
+#   phonebook  — основные данные контакта (имя, email, дата рождения)
+#   groups     — название группы (LEFT JOIN = NULL если группы нет)
+#   phones     — все номера контакта (LEFT JOIN = может быть несколько строк)
+# STRING_AGG склеивает несколько номеров в одну строку: "+77... (mobile), +77... (work)"
+# GROUP BY нужен потому что JOIN с phones даёт дубли строк — группируем обратно в одну.
+# {where} и {order} — подставляются в query_contacts() для фильтрации и сортировки.
 CONTACT_SQL = """
     SELECT pb.id, pb.first_name, pb.last_name, pb.email, pb.birthday,
            g.name AS grp,
@@ -94,9 +100,11 @@ def resolve_group(conn, name):
 
 def call_proc(conn, sql, params, silent=False):
     """
-    Универсальный вызов хранимой процедуры (CALL ...).
-    silent=True — не печатать [OK], используется при массовом импорте.
-    conn.rollback() — откатывает транзакцию при ошибке PostgreSQL.
+    ЗАЧЕМ: универсальная обёртка для вызова хранимых процедур (CALL ...).
+    Все процедуры (add_phone, move_to_group) вызываются через неё.
+    conn.rollback() — если PostgreSQL выдал ошибку, откатываем транзакцию,
+    иначе следующий запрос тоже упадёт (БД не примет команды после ошибки).
+    silent=True — при массовом импорте не засоряем вывод сотнями [OK].
     """
     try:
         with conn.cursor() as cur:
@@ -603,7 +611,10 @@ MENU = """
 ║   0. Exit                                    ║
 ╚══════════════════════════════════════════════╝"""
 
-# Словарь: номер пункта → функция. Чище чем длинный if/elif.
+# ЗАЧЕМ словарь вместо if/elif:
+# Вместо 14 условий if/elif — один словарь {номер_пункта: функция}.
+# ACTIONS[choice](conn) — вызывает нужную функцию напрямую.
+# Легко добавить новый пункт — просто добавь строку в словарь.
 ACTIONS = {
     "1": add_contact,     "2": update_contact,   "3": delete_contact,
     "4": search_all,      "5": filter_group,      "6": search_email,

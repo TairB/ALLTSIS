@@ -1,373 +1,336 @@
 """
-tools.py — логика всех инструментов рисования.
+paint.py — расширенный Paint на Pygame (TSIS 2)
 
-Каждый инструмент — отдельная функция или класс.
-paint.py импортирует отсюда всё что нужно.
+Управление:
+  Левая кнопка мыши   Рисовать / выбрать инструмент / цвет
+  Колёсико / + / -    Размер кисти
+  1 / 2 / 3           Размер кисти: маленький(2) / средний(5) / большой(10)
+  P                   Карандаш
+  L                   Прямая линия (с превью)
+  R                   Прямоугольник
+  C                   Круг
+  Q                   Квадрат
+  T                   Прямоугольный треугольник
+  Y                   Равносторонний треугольник
+  H                   Ромб
+  E                   Ластик
+  G                   Заливка (Flood Fill)
+  X                   Текст (кликни → печатай → Enter)
+  F                   Переключить Fill / Outline
+  N / BACKSPACE       Очистить холст
+  Ctrl+S              Сохранить холст как PNG
+  ESC / Ctrl+W        Выход
 """
 
 import pygame
-import math
 import sys
-from collections import deque
+import datetime
 
-
-# ─── Константы инструментов ───────────────────────────────────────────────────
-TOOL_PENCIL  = "pencil"
-TOOL_LINE    = "line"
-TOOL_RECT    = "rect"
-TOOL_CIRCLE  = "circle"
-TOOL_SQUARE  = "square"
-TOOL_RTRI    = "right_tri"
-TOOL_ETRI    = "equil_tri"
-TOOL_RHOMBUS = "rhombus"
-TOOL_ERASER  = "eraser"
-TOOL_FILL    = "fill"
-TOOL_TEXT    = "text"
-
-ALL_TOOLS = [
+from tools import (
     TOOL_PENCIL, TOOL_LINE, TOOL_RECT, TOOL_CIRCLE,
     TOOL_SQUARE, TOOL_RTRI, TOOL_ETRI, TOOL_RHOMBUS,
     TOOL_ERASER, TOOL_FILL, TOOL_TEXT,
-]
+    draw_smooth_line, polygon_shape, flood_fill,
+    make_square_points, make_right_triangle_points,
+    make_equilateral_triangle_points, make_rhombus_points,
+    Toolbar, TextTool,
+    BRUSH_SIZES,
+)
 
-TOOL_LABELS = {
-    TOOL_PENCIL:  "Pencil [P]",
-    TOOL_LINE:    "Line [L]",
-    TOOL_RECT:    "Rect [R]",
-    TOOL_CIRCLE:  "Circle [C]",
-    TOOL_SQUARE:  "Square [Q]",
-    TOOL_RTRI:    "R.Tri [T]",
-    TOOL_ETRI:    "Eq.Tri [Y]",
-    TOOL_RHOMBUS: "Rhombus [H]",
-    TOOL_ERASER:  "Eraser [E]",
-    TOOL_FILL:    "Fill [G]",
-    TOOL_TEXT:    "Text [X]",
-}
+pygame.init()
 
-# Три уровня кисти (клавиши 1, 2, 3)
-BRUSH_SIZES = {1: 2, 2: 5, 3: 10}
-
-
-# ─── Вспомогательные функции рисования ───────────────────────────────────────
-
-def draw_smooth_line(surface, colour, start, end, width):
-    """
-    Рисует плавную линию между двумя точками.
-    Используется карандашом и ластиком при движении мыши.
-
-    Интерполируем шаги между start и end и рисуем круги —
-    это даёт плавную непрерывную линию без пробелов.
-    """
-    dx = end[0] - start[0]
-    dy = end[1] - start[1]
-    steps = max(abs(dx), abs(dy), 1)
-    for i in range(steps + 1):
-        t = i / steps
-        pygame.draw.circle(
-            surface, colour,
-            (int(start[0] + t * dx), int(start[1] + t * dy)),
-            width
-        )
-
-
-def polygon_shape(surface, colour, points, fill, brush_size=2):
-    """
-    Рисует полигон — закрашенный или контурный.
-
-    fill=True  → pygame.draw.polygon с width=0 (залитый)
-    fill=False → pygame.draw.polygon с width=brush_size (контур)
-    """
-    if len(points) < 2:
-        return
-    width = 0 if fill else max(1, brush_size)
-    pygame.draw.polygon(surface, colour, points, width)
-
-
-# ─── Функции построения фигур ─────────────────────────────────────────────────
-
-def make_square_points(x0, y0, x1, y1):
-    """
-    Квадрат — берём меньшую из сторон как размер.
-    Сторона квадрата = min(|dx|, |dy|), направление сохраняется.
-    """
-    dx = x1 - x0
-    dy = y1 - y0
-    side = min(abs(dx), abs(dy))
-    sx = side if dx >= 0 else -side
-    sy = side if dy >= 0 else -side
-    return [(x0, y0), (x0 + sx, y0), (x0 + sx, y0 + sy), (x0, y0 + sy)]
-
-
-def make_right_triangle_points(x0, y0, x1, y1):
-    """
-    Прямоугольный треугольник.
-    Прямой угол — в точке (x0, y1).
-    Вертикальный катет: x0, y0 → x0, y1
-    Горизонтальный катет: x0, y1 → x1, y1
-    """
-    return [(x0, y1), (x0, y0), (x1, y1)]
-
-
-def make_equilateral_triangle_points(x0, y0, x1, y1):
-    """
-    Равносторонний треугольник.
-    Основание — от x0 до x1 на высоте y0.
-    Вершина рассчитывается через высоту = (√3 / 2) * сторона.
-    """
-    base_mid_x = (x0 + x1) / 2
-    base_len   = abs(x1 - x0)
-    height     = (math.sqrt(3) / 2) * base_len
-    apex_y     = y0 - height if y1 <= y0 else y0 + height
-    return [(x0, y0), (x1, y0), (int(base_mid_x), int(apex_y))]
-
-
-def make_rhombus_points(x0, y0, x1, y1):
-    """
-    Ромб. Центр в точке (x0, y0).
-    Полуширина = |x1-x0|, полувысота = |y1-y0|.
-    """
-    cx = x0
-    cy = y0
-    hw = abs(x1 - x0)
-    hh = abs(y1 - y0)
-    return [
-        (cx,      cy - hh),
-        (cx + hw, cy),
-        (cx,      cy + hh),
-        (cx - hw, cy),
-    ]
-
-
-# ─── Flood Fill ───────────────────────────────────────────────────────────────
-
-def flood_fill(surface, pos, fill_colour):
-    """
-    Заливка области одним цветом (алгоритм BFS).
-
-    Как работает:
-      1. Берём цвет пикселя в точке pos (target_colour)
-      2. Если fill_colour == target_colour — ничего не делаем (уже залито)
-      3. Используем очередь (deque) для обхода соседних пикселей
-      4. Для каждого пикселя: если его цвет == target_colour → перекрашиваем
-         и добавляем 4 соседей в очередь
-
-    get_at(x, y) — возвращает цвет пикселя (R, G, B, A)
-    set_at(x, y, colour) — устанавливает цвет пикселя
-
-    Ограничение: работает по точному совпадению цвета.
-    """
-    x, y = pos
-    w, h = surface.get_size()
-
-    # Проверяем что клик внутри поверхности
-    if not (0 <= x < w and 0 <= y < h):
-        return
-
-    target_colour = surface.get_at((x, y))[:3]  # берём RGB без альфа
-    fill_rgb       = fill_colour[:3]
-
-    # Если цвет уже такой — ничего не делаем
-    if target_colour == fill_rgb:
-        return
-
-    # BFS — обходим пиксели в ширину
-    queue = deque()
-    queue.append((x, y))
-    visited = set()
-    visited.add((x, y))
-
-    while queue:
-        cx, cy = queue.popleft()
-
-        # Проверяем цвет текущего пикселя
-        if surface.get_at((cx, cy))[:3] != target_colour:
-            continue
-
-        # Перекрашиваем
-        surface.set_at((cx, cy), fill_colour)
-
-        # Добавляем 4 соседей (вверх, вниз, влево, вправо)
-        for nx, ny in [(cx+1, cy), (cx-1, cy), (cx, cy+1), (cx, cy-1)]:
-            if (0 <= nx < w and 0 <= ny < h) and (nx, ny) not in visited:
-                visited.add((nx, ny))
-                queue.append((nx, ny))
-
-
-# ─── Text Tool ────────────────────────────────────────────────────────────────
-
-class TextTool:
-    """
-    Инструмент ввода текста.
-
-    Состояния:
-      active=False — ждём клика
-      active=True  — пользователь печатает
-
-    Использование:
-      1. Клик на холст → устанавливает позицию курсора
-      2. Печатаем — текст появляется в реальном времени
-      3. Enter → текст записывается на холст permanently
-      4. Escape → отмена
-    """
-
-    def __init__(self):
-        self.active   = False   # режим ввода активен?
-        self.text     = ""      # текущий вводимый текст
-        self.pos      = (0, 0)  # позиция на холсте (относительно canvas)
-        self.font     = pygame.font.SysFont("arial", 20)
-        self.cursor_visible = True
-        self.cursor_timer   = 0
-
-    def start(self, pos):
-        """Активирует ввод в указанной позиции."""
-        self.active  = True
-        self.text    = ""
-        self.pos     = pos
-
-    def cancel(self):
-        """Отменяет ввод."""
-        self.active = False
-        self.text   = ""
-
-    def handle_keydown(self, event, canvas, colour):
-        """
-        Обрабатывает нажатие клавиш во время ввода текста.
-
-        Возвращает True если текст подтверждён (Enter нажат).
-        """
-        if not self.active:
-            return False
-
-        if event.key == pygame.K_RETURN:
-            # Enter — записываем текст на холст
-            self.commit(canvas, colour)
-            return True
-
-        elif event.key == pygame.K_ESCAPE:
-            # Escape — отмена
-            self.cancel()
-            return False
-
-        elif event.key == pygame.K_BACKSPACE:
-            # Удаляем последний символ
-            self.text = self.text[:-1]
-
-        else:
-            # Добавляем введённый символ
-            if event.unicode and event.unicode.isprintable():
-                self.text += event.unicode
-
-        return False
-
-    def commit(self, canvas, colour):
-        """Рисует текст на холсте и деактивирует инструмент."""
-        if self.text.strip():
-            text_surface = self.font.render(self.text, True, colour)
-            canvas.blit(text_surface, self.pos)
-        self.cancel()
-
-    def draw_preview(self, display_surface, colour, canvas_top=0):
-        """
-        Рисует превью текста прямо на DISPLAYSURF (не на холсте!).
-
-        Это ключевое исправление — рисуем на экране, а не на canvas.
-        Так текст не "запекается" на холст до нажатия Enter.
-
-        display_surface — DISPLAYSURF (экран)
-        canvas_top      — отступ сверху (высота тулбара)
-        """
-        if not self.active:
-            return
-
-        # Мигание курсора (каждые 30 кадров)
-        self.cursor_timer += 1
-        if self.cursor_timer > 30:
-            self.cursor_visible = not self.cursor_visible
-            self.cursor_timer   = 0
-
-        # Текст + мигающий курсор
-        display_text = self.text + ("|" if self.cursor_visible else " ")
-        text_surface = self.font.render(display_text, True, colour)
-
-        # Позиция на экране = позиция на холсте + отступ тулбара
-        screen_pos = (self.pos[0], self.pos[1] + canvas_top)
-        display_surface.blit(text_surface, screen_pos)
-
-
-# ─── Toolbar ──────────────────────────────────────────────────────────────────
+SCREEN_W      = 1100
+SCREEN_H      = 680
+CANVAS_TOP    = 42
+PALETTE_H     = 45
+CANVAS_BOTTOM = SCREEN_H - PALETTE_H
 
 WHITE      = (255, 255, 255)
+BLACK      = (0,   0,   0)
+DARK       = (30,  30,  30)
 MID_GREY   = (100, 100, 100)
-LIGHT_GREY = (200, 200, 200)
-TOOLBAR_BG = (45, 45, 55)
+PALETTE_BG = (35,  35,  45)
+
+PALETTE_COLOURS = [
+    (0,   0,   0),   (255, 255, 255), (220, 50,  50),  (255, 140, 0),
+    (255, 215, 0),   (50,  200, 50),  (30,  144, 255), (138, 43,  226),
+    (255, 105, 180), (0,   206, 209), (139, 69,  19),  (128, 128, 128),
+    (255, 69,  0),   (0,   128, 128), (75,  0,   130), (240, 230, 140),
+]
+
+DISPLAYSURF = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+pygame.display.set_caption("Paint — TSIS 2")
+
+font = pygame.font.SysFont("arial", 11, bold=True)
 
 
-class Toolbar:
-    """
-    Панель инструментов вверху экрана.
+# ЗАЧЕМ: палитра цветов внизу экрана.
+# Делит нижнюю полосу на равные квадратики (swatch) по количеству цветов.
+# handle_click — возвращает цвет по которому кликнули.
+# draw — выделяет активный цвет белой рамкой толщиной 3px.
+class ColourPalette:
+    SWATCH_W = SCREEN_W // len(PALETTE_COLOURS)  # ширина одного квадратика
 
-    Содержит:
-      - кнопки инструментов
-      - кнопки размера кисти (1, 2, 3)
-      - превью цвета
-      - индикатор Fill/Outline
-    """
-
-    BTN_W  = 72
-    BTN_H  = 30
-    BTN_Y  = 5
-    BTN_X0 = 4
-
-    def __init__(self, font):
-        self.font        = font
-        self.active_tool = TOOL_PENCIL
-        self.buttons     = {}
-
-        # Кнопки инструментов
-        for i, tool in enumerate(ALL_TOOLS):
-            self.buttons[tool] = pygame.Rect(
-                self.BTN_X0 + i * (self.BTN_W + 2),
-                self.BTN_Y,
-                self.BTN_W,
-                self.BTN_H
-            )
+    def __init__(self):
+        # Список пар (Rect, цвет) для каждого квадратика палитры
+        self.rects = [
+            (pygame.Rect(i * self.SWATCH_W, CANVAS_BOTTOM, self.SWATCH_W, PALETTE_H), c)
+            for i, c in enumerate(PALETTE_COLOURS)
+        ]
 
     def handle_click(self, pos):
-        for tool, rect in self.buttons.items():
+        # Проверяем все квадратики — если клик попал, возвращаем цвет
+        for rect, colour in self.rects:
             if rect.collidepoint(pos):
-                self.active_tool = tool
-                return tool
+                return colour
         return None
 
-    def draw(self, surface, draw_colour, brush_size, fill_mode, screen_w, canvas_top):
-        # Фон тулбара
-        pygame.draw.rect(surface, TOOLBAR_BG, (0, 0, screen_w, canvas_top))
-        pygame.draw.line(surface, MID_GREY, (0, canvas_top - 1), (screen_w, canvas_top - 1), 2)
-
-        # Кнопки инструментов
-        for tool, rect in self.buttons.items():
-            active = (tool == self.active_tool)
+    def draw(self, surface, active_colour):
+        pygame.draw.rect(surface, PALETTE_BG, (0, CANVAS_BOTTOM, SCREEN_W, PALETTE_H))
+        pygame.draw.line(surface, MID_GREY, (0, CANVAS_BOTTOM), (SCREEN_W, CANVAS_BOTTOM), 2)
+        for rect, colour in self.rects:
+            pygame.draw.rect(surface, colour, rect)
+            # Активный цвет — белая рамка 3px, остальные — тёмная рамка 1px
             pygame.draw.rect(
                 surface,
-                (80, 120, 200) if active else (60, 60, 75),
-                rect, border_radius=4
+                WHITE if colour == active_colour else DARK,
+                rect, 3 if colour == active_colour else 1
             )
-            pygame.draw.rect(
-                surface,
-                LIGHT_GREY if active else MID_GREY,
-                rect, 1, border_radius=4
-            )
-            lbl = self.font.render(TOOL_LABELS[tool], True, WHITE)
-            surface.blit(lbl, lbl.get_rect(center=rect.center))
 
-        # Превью цвета
-        sw = pygame.Rect(screen_w - 90, 5, 30, 30)
-        pygame.draw.rect(surface, draw_colour, sw, border_radius=4)
-        pygame.draw.rect(surface, LIGHT_GREY, sw, 1, border_radius=4)
 
-        # Размер кисти и fill/outline
-        info = f"Size:{brush_size}  {'[Fill]' if fill_mode else '[Outline]'}"
-        surface.blit(
-            self.font.render(info, True, (150, 200, 150) if fill_mode else (200, 150, 80)),
-            (screen_w - 220, canvas_top - 14)
-        )
+# ЗАЧЕМ: сохраняет холст как PNG с временной меткой в имени файла.
+# datetime.now().strftime — форматирует дату/время: "2025-04-28_14-30-00"
+# pygame.image.save — стандартная функция Pygame для сохранения Surface в файл.
+def save_canvas(canvas):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename  = f"canvas_{timestamp}.png"
+    pygame.image.save(canvas, filename)
+    print(f"[Сохранено] {filename}")
+    return filename
+
+
+def main():
+    global FILL_MODE
+    FILL_MODE = True
+
+    clock     = pygame.time.Clock()
+    toolbar   = Toolbar(font)
+    palette   = ColourPalette()
+    text_tool = TextTool()
+
+    canvas_h = CANVAS_BOTTOM - CANVAS_TOP
+
+    # ЗАЧЕМ отдельная функция new_canvas:
+    # Чтобы не дублировать код при очистке (клавиша N/Backspace).
+    # Surface — внеэкранная поверхность (буфер), на которой рисуем.
+    # Потом blit-ом переносим на DISPLAYSURF.
+    def new_canvas():
+        c = pygame.Surface((SCREEN_W, canvas_h))
+        c.fill(WHITE)
+        return c
+
+    canvas          = new_canvas()
+    # canvas_snapshot — копия холста ДО начала рисования фигуры.
+    # Нужна для превью: при движении мыши восстанавливаем snapshot
+    # и рисуем фигуру заново — так видно как фигура выглядит в реальном времени.
+    canvas_snapshot = canvas.copy()
+
+    draw_colour    = BLACK
+    brush_size     = 5
+    is_drawing     = False
+    last_pos       = None
+    shape_start    = None
+    save_msg       = ""
+    save_msg_timer = 0
+
+    while True:
+        pressed   = pygame.key.get_pressed()
+        ctrl_held = pressed[pygame.K_LCTRL] or pressed[pygame.K_RCTRL]
+        alt_held  = pressed[pygame.K_LALT]  or pressed[pygame.K_RALT]
+
+        for event in pygame.event.get():
+
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+
+            if event.type == pygame.KEYDOWN:
+
+                # ── Текстовый режим — весь ввод идёт в text_tool ─────────────
+                if text_tool.active:
+                    text_tool.handle_keydown(event, canvas, draw_colour)
+                    continue
+
+                # Выход
+                if event.key == pygame.K_ESCAPE:    pygame.quit(); sys.exit()
+                if event.key == pygame.K_w and ctrl_held: pygame.quit(); sys.exit()
+                if event.key == pygame.K_F4 and alt_held: pygame.quit(); sys.exit()
+
+                # Ctrl+S — сохранить
+                if event.key == pygame.K_s and ctrl_held:
+                    filename       = save_canvas(canvas)
+                    save_msg       = f"Сохранено: {filename}"
+                    save_msg_timer = 180
+
+                # Инструменты
+                if event.key == pygame.K_p: toolbar.active_tool = TOOL_PENCIL
+                if event.key == pygame.K_l: toolbar.active_tool = TOOL_LINE
+                if event.key == pygame.K_r: toolbar.active_tool = TOOL_RECT
+                if event.key == pygame.K_c: toolbar.active_tool = TOOL_CIRCLE
+                if event.key == pygame.K_q: toolbar.active_tool = TOOL_SQUARE
+                if event.key == pygame.K_t: toolbar.active_tool = TOOL_RTRI
+                if event.key == pygame.K_y: toolbar.active_tool = TOOL_ETRI
+                if event.key == pygame.K_h: toolbar.active_tool = TOOL_RHOMBUS
+                if event.key == pygame.K_e: toolbar.active_tool = TOOL_ERASER
+                if event.key == pygame.K_g: toolbar.active_tool = TOOL_FILL
+                if event.key == pygame.K_x: toolbar.active_tool = TOOL_TEXT
+
+                if event.key == pygame.K_f: FILL_MODE = not FILL_MODE
+
+                # Размер кисти
+                if event.key == pygame.K_1: brush_size = BRUSH_SIZES[1]
+                if event.key == pygame.K_2: brush_size = BRUSH_SIZES[2]
+                if event.key == pygame.K_3: brush_size = BRUSH_SIZES[3]
+                if event.key in (pygame.K_PLUS, pygame.K_EQUALS):
+                    brush_size = min(60, brush_size + 1)
+                if event.key == pygame.K_MINUS:
+                    brush_size = max(1, brush_size - 1)
+
+                # Очистить
+                if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE, pygame.K_n):
+                    canvas = new_canvas()
+
+            if event.type == pygame.MOUSEWHEEL:
+                brush_size = max(1, min(60, brush_size + event.y))
+
+            # ── Нажатие мыши ─────────────────────────────────────────────────
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+
+                # Клик в зоне тулбара (выше холста) — переключаем инструмент
+                if my < CANVAS_TOP:
+                    toolbar.handle_click((mx, my)); continue
+
+                # Клик в зоне палитры (ниже холста) — меняем цвет
+                if my >= CANVAS_BOTTOM:
+                    col = palette.handle_click((mx, my))
+                    if col: draw_colour = col
+                    continue
+
+                if event.button == 1:
+                    # Переводим координаты мыши в координаты холста (вычитаем высоту тулбара)
+                    cx = max(0, min(mx, SCREEN_W - 1))
+                    cy = max(0, min(my - CANVAS_TOP, canvas_h - 1))
+                    tool = toolbar.active_tool
+
+                    if tool == TOOL_TEXT:
+                        # Активируем текстовый режим — запоминаем позицию клика
+                        text_tool.start((cx, cy))
+                        continue
+
+                    if tool == TOOL_FILL:
+                        # Заливка — сразу запускаем BFS, рисование не нужно
+                        flood_fill(canvas, (cx, cy), draw_colour)
+                        continue
+
+                    if tool in (TOOL_RECT, TOOL_CIRCLE, TOOL_SQUARE,
+                                TOOL_RTRI, TOOL_ETRI, TOOL_RHOMBUS, TOOL_LINE):
+                        # Для фигур: запоминаем начальную точку и делаем снимок холста
+                        # (snapshot нужен для живого превью при движении мыши)
+                        shape_start     = (cx, cy)
+                        canvas_snapshot = canvas.copy()
+
+                    elif tool == TOOL_PENCIL:
+                        last_pos = (cx, cy)
+                        pygame.draw.circle(canvas, draw_colour, (cx, cy), brush_size)
+
+                    elif tool == TOOL_ERASER:
+                        last_pos = (cx, cy)
+                        # Ластик в 2× больше кисти
+                        pygame.draw.circle(canvas, WHITE, (cx, cy), brush_size * 2)
+
+                    is_drawing = True
+
+            # ── Движение мыши ────────────────────────────────────────────────
+            if event.type == pygame.MOUSEMOTION and is_drawing:
+                mx, my = event.pos
+                if CANVAS_TOP <= my < CANVAS_BOTTOM:
+                    cx   = mx
+                    cy   = my - CANVAS_TOP
+                    tool = toolbar.active_tool
+
+                    if tool == TOOL_PENCIL and last_pos:
+                        draw_smooth_line(canvas, draw_colour, last_pos, (cx, cy), brush_size)
+                        last_pos = (cx, cy)
+
+                    elif tool == TOOL_ERASER and last_pos:
+                        draw_smooth_line(canvas, WHITE, last_pos, (cx, cy), brush_size * 2)
+                        last_pos = (cx, cy)
+
+                    elif tool == TOOL_LINE and shape_start:
+                        canvas.blit(canvas_snapshot, (0, 0))
+                        pygame.draw.line(canvas, draw_colour, shape_start, (cx, cy), max(1, brush_size))
+
+                    elif tool == TOOL_RECT and shape_start:
+                        canvas.blit(canvas_snapshot, (0, 0))
+                        x0, y0 = shape_start
+                        r = pygame.Rect(min(x0,cx), min(y0,cy), abs(cx-x0), abs(cy-y0))
+                        pygame.draw.rect(canvas, draw_colour, r, 0 if FILL_MODE else max(1, brush_size))
+
+                    elif tool == TOOL_CIRCLE and shape_start:
+                        canvas.blit(canvas_snapshot, (0, 0))
+                        x0, y0 = shape_start
+                        radius = int(((cx-x0)**2 + (cy-y0)**2)**0.5)
+                        if radius > 0:
+                            pygame.draw.circle(canvas, draw_colour, (x0,y0), radius,
+                                               0 if FILL_MODE else max(1, brush_size))
+
+                    elif tool == TOOL_SQUARE and shape_start:
+                        canvas.blit(canvas_snapshot, (0, 0))
+                        polygon_shape(canvas, draw_colour, make_square_points(*shape_start, cx, cy), FILL_MODE, brush_size)
+
+                    elif tool == TOOL_RTRI and shape_start:
+                        canvas.blit(canvas_snapshot, (0, 0))
+                        polygon_shape(canvas, draw_colour, make_right_triangle_points(*shape_start, cx, cy), FILL_MODE, brush_size)
+
+                    elif tool == TOOL_ETRI and shape_start:
+                        canvas.blit(canvas_snapshot, (0, 0))
+                        polygon_shape(canvas, draw_colour, make_equilateral_triangle_points(*shape_start, cx, cy), FILL_MODE, brush_size)
+
+                    elif tool == TOOL_RHOMBUS and shape_start:
+                        canvas.blit(canvas_snapshot, (0, 0))
+                        polygon_shape(canvas, draw_colour, make_rhombus_points(*shape_start, cx, cy), FILL_MODE, brush_size)
+
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                is_drawing  = False
+                last_pos    = None
+                shape_start = None
+
+        # ── Отрисовка ─────────────────────────────────────────────────────────
+        # Порядок важен: сначала фон, потом холст, потом UI поверх всего.
+        DISPLAYSURF.fill(DARK)  # тёмный фон вокруг холста
+
+        # Переносим холст (Surface) на экран начиная с отступа тулбара
+        DISPLAYSURF.blit(canvas, (0, CANVAS_TOP))
+
+        # Превью текста рисуем ПРЯМО НА DISPLAYSURF — холст не трогаем!
+        # Так текст не "записывается" на холст до нажатия Enter
+        if text_tool.active:
+            text_tool.draw_preview(DISPLAYSURF, draw_colour, CANVAS_TOP)
+            hint = font.render("Enter = подтвердить  |  Escape = отмена", True, (255, 220, 50))
+            DISPLAYSURF.blit(hint, (10, CANVAS_TOP + 5))
+
+        toolbar.draw(DISPLAYSURF, draw_colour, brush_size, FILL_MODE, SCREEN_W, CANVAS_TOP)
+        palette.draw(DISPLAYSURF, draw_colour)
+
+        # Сообщение о сохранении — показываем 180 кадров (~3 секунды при 60fps)
+        if save_msg_timer > 0:
+            save_msg_timer -= 1
+            DISPLAYSURF.blit(font.render(save_msg, True, (50, 220, 50)),
+                             (10, SCREEN_H - PALETTE_H - 20))
+
+        pygame.display.flip()  # обновляем экран (показываем всё что нарисовали)
+        clock.tick(60)  # ограничиваем до 60 кадров в секунду
+
+
+if __name__ == "__main__":
+    main()

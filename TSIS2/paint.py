@@ -64,16 +64,22 @@ pygame.display.set_caption("Paint — TSIS 2")
 font = pygame.font.SysFont("arial", 11, bold=True)
 
 
+# ЗАЧЕМ: палитра цветов внизу экрана.
+# Делит нижнюю полосу на равные квадратики (swatch) по количеству цветов.
+# handle_click — возвращает цвет по которому кликнули.
+# draw — выделяет активный цвет белой рамкой толщиной 3px.
 class ColourPalette:
-    SWATCH_W = SCREEN_W // len(PALETTE_COLOURS)
+    SWATCH_W = SCREEN_W // len(PALETTE_COLOURS)  # ширина одного квадратика
 
     def __init__(self):
+        # Список пар (Rect, цвет) для каждого квадратика палитры
         self.rects = [
             (pygame.Rect(i * self.SWATCH_W, CANVAS_BOTTOM, self.SWATCH_W, PALETTE_H), c)
             for i, c in enumerate(PALETTE_COLOURS)
         ]
 
     def handle_click(self, pos):
+        # Проверяем все квадратики — если клик попал, возвращаем цвет
         for rect, colour in self.rects:
             if rect.collidepoint(pos):
                 return colour
@@ -84,6 +90,7 @@ class ColourPalette:
         pygame.draw.line(surface, MID_GREY, (0, CANVAS_BOTTOM), (SCREEN_W, CANVAS_BOTTOM), 2)
         for rect, colour in self.rects:
             pygame.draw.rect(surface, colour, rect)
+            # Активный цвет — белая рамка 3px, остальные — тёмная рамка 1px
             pygame.draw.rect(
                 surface,
                 WHITE if colour == active_colour else DARK,
@@ -91,6 +98,9 @@ class ColourPalette:
             )
 
 
+# ЗАЧЕМ: сохраняет холст как PNG с временной меткой в имени файла.
+# datetime.now().strftime — форматирует дату/время: "2025-04-28_14-30-00"
+# pygame.image.save — стандартная функция Pygame для сохранения Surface в файл.
 def save_canvas(canvas):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename  = f"canvas_{timestamp}.png"
@@ -110,12 +120,19 @@ def main():
 
     canvas_h = CANVAS_BOTTOM - CANVAS_TOP
 
+    # ЗАЧЕМ отдельная функция new_canvas:
+    # Чтобы не дублировать код при очистке (клавиша N/Backspace).
+    # Surface — внеэкранная поверхность (буфер), на которой рисуем.
+    # Потом blit-ом переносим на DISPLAYSURF.
     def new_canvas():
         c = pygame.Surface((SCREEN_W, canvas_h))
         c.fill(WHITE)
         return c
 
     canvas          = new_canvas()
+    # canvas_snapshot — копия холста ДО начала рисования фигуры.
+    # Нужна для превью: при движении мыши восстанавливаем snapshot
+    # и рисуем фигуру заново — так видно как фигура выглядит в реальном времени.
     canvas_snapshot = canvas.copy()
 
     draw_colour    = BLACK
@@ -189,30 +206,36 @@ def main():
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = event.pos
 
+                # Клик в зоне тулбара (выше холста) — переключаем инструмент
                 if my < CANVAS_TOP:
                     toolbar.handle_click((mx, my)); continue
 
+                # Клик в зоне палитры (ниже холста) — меняем цвет
                 if my >= CANVAS_BOTTOM:
                     col = palette.handle_click((mx, my))
                     if col: draw_colour = col
                     continue
 
                 if event.button == 1:
+                    # Переводим координаты мыши в координаты холста (вычитаем высоту тулбара)
                     cx = max(0, min(mx, SCREEN_W - 1))
                     cy = max(0, min(my - CANVAS_TOP, canvas_h - 1))
                     tool = toolbar.active_tool
 
                     if tool == TOOL_TEXT:
-                        # Активируем текстовый режим — запоминаем позицию
+                        # Активируем текстовый режим — запоминаем позицию клика
                         text_tool.start((cx, cy))
                         continue
 
                     if tool == TOOL_FILL:
+                        # Заливка — сразу запускаем BFS, рисование не нужно
                         flood_fill(canvas, (cx, cy), draw_colour)
                         continue
 
                     if tool in (TOOL_RECT, TOOL_CIRCLE, TOOL_SQUARE,
                                 TOOL_RTRI, TOOL_ETRI, TOOL_RHOMBUS, TOOL_LINE):
+                        # Для фигур: запоминаем начальную точку и делаем снимок холста
+                        # (snapshot нужен для живого превью при движении мыши)
                         shape_start     = (cx, cy)
                         canvas_snapshot = canvas.copy()
 
@@ -222,6 +245,7 @@ def main():
 
                     elif tool == TOOL_ERASER:
                         last_pos = (cx, cy)
+                        # Ластик в 2× больше кисти
                         pygame.draw.circle(canvas, WHITE, (cx, cy), brush_size * 2)
 
                     is_drawing = True
@@ -282,9 +306,10 @@ def main():
                 shape_start = None
 
         # ── Отрисовка ─────────────────────────────────────────────────────────
-        DISPLAYSURF.fill(DARK)
+        # Порядок важен: сначала фон, потом холст, потом UI поверх всего.
+        DISPLAYSURF.fill(DARK)  # тёмный фон вокруг холста
 
-        # Рисуем холст
+        # Переносим холст (Surface) на экран начиная с отступа тулбара
         DISPLAYSURF.blit(canvas, (0, CANVAS_TOP))
 
         # Превью текста рисуем ПРЯМО НА DISPLAYSURF — холст не трогаем!
@@ -297,13 +322,14 @@ def main():
         toolbar.draw(DISPLAYSURF, draw_colour, brush_size, FILL_MODE, SCREEN_W, CANVAS_TOP)
         palette.draw(DISPLAYSURF, draw_colour)
 
+        # Сообщение о сохранении — показываем 180 кадров (~3 секунды при 60fps)
         if save_msg_timer > 0:
             save_msg_timer -= 1
             DISPLAYSURF.blit(font.render(save_msg, True, (50, 220, 50)),
                              (10, SCREEN_H - PALETTE_H - 20))
 
-        pygame.display.flip()
-        clock.tick(60)
+        pygame.display.flip()  # обновляем экран (показываем всё что нарисовали)
+        clock.tick(60)  # ограничиваем до 60 кадров в секунду
 
 
 if __name__ == "__main__":
