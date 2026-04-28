@@ -84,6 +84,17 @@ def load_assets():
 
 def load_player_img(settings):
     color = settings.get("car_color", "blue")
+
+    if color == "red":
+        # Используем Enemy.png и поворачиваем на 180° — это красная машина игрока
+        for path in [os.path.join("assets", "Enemy.png"), "Enemy.png"]:
+            if os.path.exists(path):
+                img = pygame.image.load(path).convert_alpha()
+                img = _scale_car(img, 52)
+                return pygame.transform.rotate(img, 180)
+        raise FileNotFoundError("Enemy.png not found")
+
+    # blue (по умолчанию) — обычный Player.png
     candidates = [f"Player_{color}.png", "Player.png"]
     for name in candidates:
         for path in [os.path.join("assets", name), name]:

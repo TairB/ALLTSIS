@@ -6,6 +6,12 @@
     "coins": 10
   },
   {
+    "name": "dantist",
+    "score": 100,
+    "distance": 0,
+    "coins": 10
+  },
+  {
     "name": "sajd",
     "score": 60,
     "distance": 0,
@@ -16,5 +22,35 @@
     "score": 40,
     "distance": 0,
     "coins": 4
+  },
+  {
+    "name": "wolf",
+    "score": 30,
+    "distance": 0,
+    "coins": 3
+  },
+  {
+    "name": "dantist",
+    "score": 10,
+    "distance": 0,
+    "coins": 1
+  },
+  {
+    "name": "dantist",
+    "score": 0,
+    "distance": 0,
+    "coins": 0
+  },
+  {
+    "name": "dantist",
+    "score": 0,
+    "distance": 0,
+    "coins": 0
+  },
+  {
+    "name": "dantist",
+    "score": 0,
+    "distance": 0,
+    "coins": 0
   }
 ]
