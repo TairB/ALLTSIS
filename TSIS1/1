@@ -1,0 +1,119 @@
+[
+  {
+    "id": 1,
+    "first_name": "Alice",
+    "last_name": "Smith",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 2,
+    "first_name": "Bob",
+    "last_name": "Johnson",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 3,
+    "first_name": "Carol",
+    "last_name": "Williams",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 4,
+    "first_name": "David",
+    "last_name": "Brown",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 5,
+    "first_name": "Eva",
+    "last_name": "Jones",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 6,
+    "first_name": "Frank",
+    "last_name": "Garcia",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 7,
+    "first_name": "Grace",
+    "last_name": "Martinez",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 8,
+    "first_name": "Hank",
+    "last_name": "Davis",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 9,
+    "first_name": "Iris",
+    "last_name": "Wilson",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 10,
+    "first_name": "Jack",
+    "last_name": "Moore",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 22,
+    "first_name": "islam",
+    "last_name": "churka",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 23,
+    "first_name": "evgeni",
+    "last_name": "tuivan",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  },
+  {
+    "id": 24,
+    "first_name": "d",
+    "last_name": "f",
+    "email": null,
+    "birthday": null,
+    "group_name": null,
+    "phones": []
+  }
+]
